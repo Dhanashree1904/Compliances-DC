@@ -1,0 +1,16 @@
+global and standard compliance
+indian compliances 
+regulatory bodies
+research on these and make a doc by tomorrow
+make a list data management, cyber security
+sources and official websites
+
+
+scrape info from these compliances and make a chatbot/ questionair
+
+
+
+scrape particular data from mostly indian compliances. 
+timely updates and news about those compliances.
+no trash updates i need important ones only.
+only important data
