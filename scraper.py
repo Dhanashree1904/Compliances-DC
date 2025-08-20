@@ -1,43 +1,105 @@
 import requests
 from bs4 import BeautifulSoup
-import pandas as pd
-from datetime import datetime
+import csv
 import os
+import json
+from datetime import datetime
+from urllib.parse import urljoin
 
-# URL of compliance updates page
-URL = "https://www.nist.gov/cyberframework"  # Replace with actual site
+# File paths
 CSV_FILE = "compliance_updates.csv"
+SEEN_FILE = "seen_updates.json"
 
-def scrape_updates():
-    # Fetch webpage
-    response = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"})
-    soup = BeautifulSoup(response.text, "html.parser")
+# Load previously seen updates
+if os.path.exists(SEEN_FILE):
+    with open(SEEN_FILE, "r") as f:
+        seen_updates = json.load(f)
+else:
+    seen_updates = {}
 
-    # Extract updates (Adjust selectors according to site HTML)
-    updates = []
-    for update in soup.select(".update-item"):  # Change selector
-        title = update.select_one(".update-title").get_text(strip=True)
-        link = update.select_one("a")["href"]
-        date = update.select_one(".update-date").get_text(strip=True)
+# Compliance websites
+SITES = {
+    "Indian Compliance": "https://www.meity.gov.in/whats-new",
+    "GDPR": "https://gdpr-info.eu/news/",
+    "FERPA": "https://studentprivacy.ed.gov/whats-new",
+    "NIST": "https://www.nist.gov/news-events/news"
+}
 
-        updates.append({
-            "date": date,
-            "title": title,
-            "link": link,
-            "scraped_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        })
+def fetch_meity(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    item = soup.select_one(".view-content .views-row")
+    if item:
+        title = item.get_text(strip=True)
+        link = urljoin(url, item.find("a")["href"]) if item.find("a") else url
+        return title, link
+    return None, None
 
-    # Save to CSV (avoid duplicates)
-    df_new = pd.DataFrame(updates)
+def fetch_gdpr(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    item = soup.select_one("article h2 a")
+    if item:
+        return item.get_text(strip=True), item["href"]
+    return None, None
 
-    if os.path.exists(CSV_FILE):
-        df_old = pd.read_csv(CSV_FILE)
-        df_all = pd.concat([df_old, df_new]).drop_duplicates(subset=["title"]).reset_index(drop=True)
-    else:
-        df_all = df_new
+def fetch_ferpa(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    item = soup.select_one(".view-content .views-row a")
+    if item:
+        title = item.get_text(strip=True)
+        link = urljoin(url, item["href"])
+        return title, link
+    return None, None
 
-    df_all.to_csv(CSV_FILE, index=False)
-    print(f"✅ Scraped {len(updates)} updates. Total saved: {len(df_all)}")
+def fetch_nist(url):
+    r = requests.get(url)
+    soup = BeautifulSoup(r.text, "html.parser")
+    item = soup.select_one("article h3 a")
+    if item:
+        return item.get_text(strip=True), urljoin(url, item["href"])
+    return None, None
 
-if __name__ == "__main__":
-    scrape_updates()
+SCRAPERS = {
+    "Indian Compliance": fetch_meity,
+    "GDPR": fetch_gdpr,
+    "FERPA": fetch_ferpa,
+    "NIST": fetch_nist
+}
+
+# Ensure CSV exists
+if not os.path.exists(CSV_FILE):
+    with open(CSV_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Timestamp", "Source", "Title", "Link", "Status"])
+
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+with open(CSV_FILE, "a", newline="", encoding="utf-8") as f:
+    writer = csv.writer(f)
+
+    for source, url in SITES.items():
+        title, link = SCRAPERS[source](url)
+
+        if not title:  # if scraper failed
+            writer.writerow([timestamp, source, "No updates found", "NA", "No new update"])
+            continue
+
+        # Get last seen update for this source
+        last_seen = seen_updates.get(source)
+
+        if last_seen != title:
+            # New update found
+            writer.writerow([timestamp, source, title, link, "NEW UPDATE FOUND"])
+            seen_updates[source] = title
+        else:
+            # No new update
+            writer.writerow([timestamp, source, "No updates found", "NA", "No new update"])
+
+# Save updated seen updates
+with open(SEEN_FILE, "w") as f:
+    json.dump(seen_updates, f, indent=2)
+
+print("Compliance check complete. Logged to CSV.")
+
