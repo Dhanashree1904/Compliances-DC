@@ -7,7 +7,7 @@ nltk.download('punkt')
 from nltk.tokenize import sent_tokenize
 
 # Folder containing your scraped text files
-folder_path = "scrape_outputs"  # Change to your actual folder
+folder_path = "datascrape/scrape_outputs"
 
 # Define important keywords (you can expand this list)
 keywords = [
